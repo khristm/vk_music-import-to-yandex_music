@@ -1,0 +1,9 @@
+/build
+/dist
+/logs
+/.venv
+/.idea
+*.spec
+*.txt
+*.ini
+/__pycache__
