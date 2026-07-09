@@ -1,6 +1,7 @@
-from yandex_music import Client
+import asyncio
+from yandex_music import Client, ClientAsync
 from datetime import datetime
-import time
+from yandex_music.utils.difference import Difference
 
 class ClientForImport:
     def __init__(self):
@@ -9,9 +10,10 @@ class ClientForImport:
         self.revision_playlist = 0
         self.playlist = None
         self.is_new_playlist = False
-    def __init_client_yandex(self,token):
+        self.list_songs = []
+    async def __init_client_yandex(self,token):
         try:
-           self.client = Client(token).init()
+           self.client = await ClientAsync(token).init()
         except Exception as e:
             print(f"Ошибка при инициализации клиента яндекс музыки: {e}")
     def __is_new_playlist(self):
@@ -27,52 +29,76 @@ class ClientForImport:
                 self.is_new_playlist = False
                 return False
             print("Некорректный выбор введи Д либо Н")
-    def __create_playlist(self):
-        new_playlist = self.client.users_playlists_create(
+    async def __create_playlist(self):
+        new_playlist = await self.client.users_playlists_create(
                         title=f"import from VK {datetime.now().strftime('%d.%m.%Y')}",
                         visibility='private')
         self.playlist = new_playlist
         return new_playlist
-    def __search_song(self, song_name):
-        time.sleep(0.3)
-        search_result = self.client.search(song_name)
-        if not search_result.tracks or not search_result.tracks.results:
-            return False
-        track_in_yandex = search_result.tracks.results[0]
-        album_id = track_in_yandex.albums[0].id if track_in_yandex.albums else None
-        if track_in_yandex:
-            time.sleep(0.3)
-            if self.is_new_playlist:
-                self.client.users_playlists_insert_track(
-                    kind=self.playlist.kind,
-                    track_id=track_in_yandex.id,
-                    album_id=album_id,
-                    revision=self.revision_playlist
-                )
-                self.revision_playlist += 1
-            else:
-                track_in_yandex.like()
-        else:
-            return False
-        return True
-    def start_import(self, token, tracklist):
-        self.__init_client_yandex(token)
+    async def start_package_import(self, token, tracklist):
+        await self.__init_client_yandex(token)
         if self.client is None:
             return
         is_new_playlist = self.__is_new_playlist()
         if is_new_playlist:
-            new_playlist = self.__create_playlist()
+            new_playlist = await self.__create_playlist()
             self.revision_playlist = new_playlist.revision
-        print("Поиск и добавление треков в Я.Музыке")
-        for track in tracklist:
-            print(f"Поиск трека: {track}")
-            result = self.__search_song(track)
-            if result:
-                self.counter += 1
-                print("Трек найден и добавлен")
-            else:
-                print(f"Трек: {track} не найден")
-        print(f"Добавили в яндекс треков: {self.counter}")
+        print("=" * 50)
+        print("Поиск в яндексе треков для добавления")
+        print("=" * 50)
+        await self.__async_search_tracks(tracklist)
+        print("Поиск окончен, добавляем треки......")
+        print("=" * 50)
+        await self.__import_in_yandex()
+        print(f"В яндекс перенесено треков: {self.counter}")
+    async def __search_song_and_add_in_list(self, song_name):
+        try:
+            search_result = await self.client.search(song_name)
+        except Exception as e:
+            print(f"Ошибка при поиске трека {song_name}, текст ошибки: {e}")
+            return None
+        if not search_result.tracks or not search_result.tracks.results:
+            print(f"Трек {song_name} не найден в яндексе")
+            return None
+        track_in_yandex = search_result.tracks.results[0]
+        album_id = track_in_yandex.albums[0].id if track_in_yandex.albums else None
+        print(f"Трек {song_name} найден в яндексе и включен в список к добавлению ")
+        self.counter += 1
+        if self.is_new_playlist:
+            return {"id":str(track_in_yandex.id), "album_id":str(album_id), 'type': 'track'}
+        return str(track_in_yandex.id)
+    async def __import_in_yandex(self):
+        if not self.list_songs:
+            return
+        if self.is_new_playlist:
+            change_diff=Difference()
+            change_diff.add_insert(at=0,tracks=self.list_songs)
+            operation_diff = change_diff.to_json()
+            await self.client.users_playlists_change(
+                kind=self.playlist.kind,
+                diff=operation_diff,
+                revision=self.revision_playlist
+            )
+            return
+        await self.client.users_likes_tracks_add(track_ids=self.list_songs)
+        return
+    async def __async_search_tracks(self, song_list:list[str]):
+        song_list.reverse()
+        BATCH_SIZE=10
+        for i in range(0, len(song_list), BATCH_SIZE):
+            chunk = song_list[i:i + BATCH_SIZE]
+            task = [self.__search_song_and_add_in_list(song) for song in chunk]
+            result = await asyncio.gather(*task)
+            for res in result:
+                if res is not None:
+                    self.list_songs.append(res)
+            await asyncio.sleep(0.5)
+
+
+
+
+
+
 
 
 class ClientForAuth:

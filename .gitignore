@@ -7,3 +7,4 @@
 *.txt
 *.ini
 /__pycache__
+.env
