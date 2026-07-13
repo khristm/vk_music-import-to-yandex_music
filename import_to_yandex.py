@@ -3,6 +3,19 @@ from yandex_music import Client, ClientAsync
 from datetime import datetime
 from yandex_music.utils.difference import Difference
 
+
+def is_new_playlist():
+    print("=" * 50)
+    while True:
+        user_data = input("Добавить в отдельный плэйлист?(Д/Н): ").upper()
+        if user_data == "Д":
+            print("=" * 50)
+            return True
+        if user_data == "Н":
+            print("=" * 50)
+            return False
+        print("Некорректный выбор введи Д либо Н")
+
 class ClientForImport:
     def __init__(self):
         self.counter = 0
@@ -16,33 +29,26 @@ class ClientForImport:
            self.client = await ClientAsync(token).init()
         except Exception as e:
             print(f"Ошибка при инициализации клиента яндекс музыки: {e}")
-    def __is_new_playlist(self):
-        print("=" * 50)
-        while True:
-            user_data = input("Добавить в отдельный плэйлист?(Д/Н): ").upper()
-            if user_data=="Д":
-                print("=" * 50)
-                self.is_new_playlist = True
-                return True
-            if user_data=="Н":
-                print("=" * 50)
-                self.is_new_playlist = False
-                return False
-            print("Некорректный выбор введи Д либо Н")
     async def __create_playlist(self):
-        new_playlist = await self.client.users_playlists_create(
-                        title=f"import from VK {datetime.now().strftime('%d.%m.%Y')}",
-                        visibility='private')
-        self.playlist = new_playlist
-        return new_playlist
-    async def start_package_import(self, token, tracklist):
+        try:
+            new_playlist = await self.client.users_playlists_create(
+                            title=f"import from VK {datetime.now().strftime('%d.%m.%Y')}",
+                            visibility='private')
+            self.playlist = new_playlist
+            self.revision_playlist = new_playlist.revision
+            return True
+        except Exception as e:
+            print(f"Не смогли создать новый плейлист с ошибкой: {e}")
+            return False
+    async def start_package_import(self, token, tracklist, user_new_playlist:bool):
         await self.__init_client_yandex(token)
         if self.client is None:
             return
-        is_new_playlist = self.__is_new_playlist()
-        if is_new_playlist:
-            new_playlist = await self.__create_playlist()
-            self.revision_playlist = new_playlist.revision
+        if user_new_playlist:
+            self.is_new_playlist = True
+            playlist_created = await self.__create_playlist()
+            if not playlist_created:
+                return
         print("=" * 50)
         print("Поиск в яндексе треков для добавления")
         print("=" * 50)
