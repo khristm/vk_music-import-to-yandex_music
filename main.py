@@ -44,5 +44,5 @@ async def test_with_token():
     await test(id_in_vk, yandex_token)
 
 if __name__=="__main__":
-    #asyncio.run(start())
-    asyncio.run(test_with_token())
+    asyncio.run(start())
+    #asyncio.run(test_with_token())
